@@ -1,4 +1,4 @@
-from keras.models import Sequential
+from keras.models import Sequential, Graph
 from keras.layers import Dense, Dropout, Activation, Merge
 from keras.layers.recurrent import LSTM
 from keras.optimizers import SGD
@@ -83,6 +83,7 @@ def data(f, batch=50):
         label=sent[0]
         target=sent[3].strip().split(u" ")
 
+
         for l,replace in zip(label.split(u" "),replace_tokens):
             # l = correct label
             # replace = index of the token in target sentence
@@ -148,9 +149,19 @@ def data(f, batch=50):
                 continue
             vectorized_right[i,j,vocab2index[token]]=1.0
 
+    #I'm so sorry you have to see this T_T
+    revec_left = np.zeros((vectorized_left.shape[:2]), dtype=np.int32)
+    revec_right = np.zeros((vectorized_right.shape[:2]), dtype=np.int32)
 
-    return vectorized_left,vectorized_right,vectorized_labels
+    for a, example in enumerate(vectorized_left):
+        for b, sequence in enumerate(example):
+            revec_left[a][b] = np.argmax(sequence)
 
+    for a, example in enumerate(vectorized_right):
+        for b, sequence in enumerate(example):
+            revec_right[a][b] = np.argmax(sequence)
+
+    return revec_left, revec_right, vectorized_labels #vectorized_left,vectorized_right,vectorized_labels
 
 #labels_v=np.array([labels2index[i] for i in next_chars ])
 #from keras.utils import np_utils, generic_utils
@@ -174,10 +185,52 @@ print "Training examples:",len(train_labels)
 
 
 
+
+
+#Let's build a graph model
+
+print 'Build model...'
+
+model = Graph()
+        
+model.add_input(name='left', input_shape=(window, ), dtype=np.int32)
+model.add_input(name='right', input_shape=(window, ), dtype=np.int32)
+
+#For future
+#model.add_input(name='left_s', input_shape=(window, ))
+#model.add_input(name='right_s', input_shape=(window, ))
+
+#Hack Embeddings in
+from keras.layers.embeddings import Embedding
+
+#Oh dear! What a hacky way to do this!
+left_emb = Embedding(len(vocab), 128, input_length=window, dropout=0.2)
+right_emb = Embedding(len(vocab), 128, input_length=window, dropout=0.2)
+
+#right_emb.params = left_emb.params
+right_emb.W = left_emb.W
+
+model.add_node(left_emb, name='emb_left', input='left')
+model.add_node(right_emb, name='emb_right', input='right')
+
+#Left & Right LSTM
+model.add_node(LSTM(128, return_sequences=False, input_shape=(window, 128)), name='left_lstm', input='emb_left')
+model.add_node(LSTM(128, return_sequences=False, input_shape=(window, 128)), name='right_lstm', input='emb_right')
+
+#Time to Predict
+model.add_node(Dense(128, activation='relu'), name='dense_1', inputs=['left_lstm', 'right_lstm'])
+model.add_node(Dense(len(dist_labels), activation='softmax'), name='softmax_1', input='dense_1') # why I have two dense layers here?
+model.add_output(name='output', input='softmax_1')
+model.compile(loss={'output':'categorical_crossentropy'}, optimizer='rmsprop')
+
+model.fit({'left':train_left, 'right':train_right, 'output':train_labels}, nb_epoch=10)
+
+
+'''
 # BUILD MODEL: 2 concatenated LSTMs
 print 'Build model...'
 model_left = Sequential()
-model_left.add(LSTM(128, return_sequences=False, input_shape=(window, len(vocab))))
+model_left.add()
 
 model_right = Sequential()
 model_right.add(LSTM(128, return_sequences=False, input_shape=(window, len(vocab))))
@@ -198,7 +251,7 @@ decoder.compile(loss='categorical_crossentropy', optimizer='rmsprop', class_mode
 #model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
 #np.random.seed(1337)  # for reproducibility
-
+'''
 
 
 #dev data
@@ -206,12 +259,10 @@ with codecs.open(u"dev_data/TEDdev.en-fr.data.filtered.withids",u"rt",u"utf-8") 
     dev_left,dev_right,dev_labels=data(f,batch=1000)
 print "Devel examples:",len(dev_labels)
 
-
-evalcb=CustomCallback(dev_left,dev_right,dev_labels,index2label) # evaluate after each epoch
-
-savecb=ModelCheckpoint(u"rnn_model.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto') # save model (I have not tested this!)
-
-decoder.fit([train_left,train_right], train_labels, batch_size=10, nb_epoch=100, verbose=1, show_accuracy=True, validation_data=([dev_left,dev_right],dev_labels), callbacks=[evalcb,savecb])
+#Seems cool, but I've got no time to get them working!
+#evalcb=CustomCallback(dev_left,dev_right,dev_labels,index2label) # evaluate after each epoch
+#savecb=ModelCheckpoint(u"rnn_model.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto') # save model (I have not tested this!)
+#decoder.fit([train_left,train_right], train_labels, batch_size=10, nb_epoch=100, verbose=1, show_accuracy=True, validation_data=([dev_left,dev_right],dev_labels), callbacks=[evalcb,savecb])
 
     
     
