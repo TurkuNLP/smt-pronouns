@@ -215,7 +215,7 @@ merged_vector = merge([left_target_lstm_out, right_target_lstm_out], mode='conca
 
 #The prediction layer
 dense_out = Dense(128, activation='relu')(merged_vector)
-predictions = Dense(len(dist_labels), activation='softmax')(dense_out)
+predictions = Dense(len(dist_labels), activation='softmax', name='output')(dense_out)
 
 model = Model(input=[left_target, right_target], output=predictions)
 model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
