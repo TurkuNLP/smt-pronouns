@@ -198,6 +198,28 @@ print 'Build model...'
 left_target = Input(shape=(window, ), name='left_target', dtype='int32')
 right_target = Input(shape=(window, ), name='right_target', dtype='int32')
 
+#Future inputs
+'''
+left_target_pos = Input(shape=(window, ), name='left_target_pos', dtype='int32')
+right_target_pos = Input(shape=(window, ), name='right_target_pos', dtype='int32')
+
+left_source = Input(shape=(window, ), name='left_source', dtype='int32')
+right_source = Input(shape=(window, ), name='right_source', dtype='int32')
+
+'''
+#Future embeddings and vectors
+'''
+shared_emb_pos = Embedding(len(vocab_pos), vec_size, input_length=window, mask_zero=True)
+shared_emb_source = Embedding(len(vocab_source), vec_size, input_length=window, mask_zero=True)
+
+vector_left_target_pos = shared_emb_pos(left_target_pos)
+vector_right_target_pos = shared_emb_pos(right_target_pos)
+
+vector_left_source = shared_emb_source(left_source)
+vector_right_source = shared_emb_source(right_source)
+
+'''
+
 #Then the embeddings
 from keras.layers.embeddings import Embedding
 shared_emb = Embedding(len(vocab), vec_size, input_length=window, mask_zero=True)
@@ -215,17 +237,17 @@ merged_vector = merge([left_target_lstm_out, right_target_lstm_out], mode='conca
 
 #The prediction layer
 dense_out = Dense(128, activation='relu')(merged_vector)
-predictions = Dense(len(dist_labels), activation='softmax', name='output')(dense_out)
+predictions = Dense(len(dist_labels), activation='softmax')(dense_out)
 
 model = Model(input=[left_target, right_target], output=predictions)
-model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
+model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
 
 #Make callbacks
 evalcb=CustomCallback(dev_left,dev_right,dev_labels,index2label) # evaluate after each epoch
 savecb=ModelCheckpoint(u"rnn_model.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto') # save model (I have not tested this!)
 
-model.fit([train_left, train_right], train_labels, batch_size=10, nb_epoch=20, validation_split=0.1, callbacks=[evalcb, savecb])
-import pdb;pdb.set_trace()
+model.fit([train_left, train_right], train_labels, batch_size=10, nb_epoch=20, callbacks=[evalcb, savecb])
+
 
 '''
 model = Graph()
