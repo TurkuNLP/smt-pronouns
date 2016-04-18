@@ -53,7 +53,7 @@ def create_examples(f,max_examples=0):
     labels = []
 
     for sent in iter_data(f, max_examples): # label, category, source sent, target sent, alignment, doc id
-     
+        
         alignments=create_alignments(sent[2],sent[3],sent[4])
 #        alignments=dict()
         fdict=create_features(sent[2],sent[3],alignments)

@@ -1,4 +1,4 @@
-from svm_pronouns import iter_data
+from svm_pronouns import iter_data, create_alignments
 import collections
 import numpy as np
 import codecs
@@ -88,7 +88,9 @@ def word_pos_split(word_pos):
 
 
 def fill_batch(ms,vs,data_iterator):
-    """Iterates over the data_iterator and fills the index matrices with fresh data"""
+    """ Iterates over the data_iterator and fills the index matrices with fresh data
+        ms = matrices, vs = vocabularies
+    """
 
     matrix_dict=dict(zip(ms._fields,ms)) #the named tuple as dict, what we return
     batchsize,window=ms.target_word_left.shape
@@ -99,6 +101,9 @@ def fill_batch(ms,vs,data_iterator):
         target_wp=map(word_pos_split,target) #[[word,pos],...]
         assert len(target)==len(target_wp)
         source=sent[2].strip().split(u" ")
+
+        alignments=create_alignments(None,None,sent[4])
+
         for l,replace in zip(label.split(u" "),replace_tokens):
 
             ms.labels[row] = 0#np.zeros(ms.labels[row].shape)
@@ -114,6 +119,18 @@ def fill_batch(ms,vs,data_iterator):
                 ms.target_word_right[row,j]=vs.get_id(target_wp[target_idx][0],vs.target_word)
                 ms.target_pos_right[row,j]=vs.get_id(target_wp[target_idx][1],vs.target_pos)
                 ms.target_wordpos_right[row,j]=vs.get_id(target[target_idx],vs.target_wordpos)
+
+            # now source
+            assert replace in alignments 
+            source_token=alignments[replace][0] # TODO: not just first one...?
+            source_lwindow=xrange(source_token-1,max(0,source_token-window)-1,-1)
+            source_rwindow=xrange(source_token+1,min(len(source),source_token+window))
+            for j,source_idx in enumerate(source_lwindow):
+                ms.source_word_left[row,j]=vs.get_id(source[source_idx],vs.source_word)
+            for j,source_idx in enumerate(source_rwindow):
+                ms.source_word_right[row,j]=vs.get_id(source[source_idx],vs.source_word)
+            
+
             row+=1
             if row==batchsize:
 
