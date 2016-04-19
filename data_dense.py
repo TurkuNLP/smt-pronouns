@@ -1,4 +1,4 @@
-from svm_pronouns import iter_data, create_alignments
+#from svm_pronouns import iter_data, create_alignments
 import collections
 import numpy as np
 import codecs
@@ -96,13 +96,17 @@ def fill_batch(ms,vs,data_iterator):
     batchsize,window=ms.target_word_left.shape
     row=0
     for sent,replace_tokens in data_iterator: # label, category, source sent, target sent, alignment, doc id
+
+        if not replace_tokens:
+            continue
+
         label=sent[0]
         target=sent[3].strip().split(u" ")
         target_wp=map(word_pos_split,target) #[[word,pos],...]
         assert len(target)==len(target_wp)
         source=sent[2].strip().split(u" ")
 
-        alignments=create_alignments(None,None,sent[4])
+        alignments=create_alignments(sent[4])
 
         for l,replace in zip(label.split(u" "),replace_tokens):
 
@@ -142,6 +146,57 @@ def fill_batch(ms,vs,data_iterator):
                 row=0
                 wipe_matrices(ms)
 
+def create_alignments(align):
+    alignment=dict()
+    for pair in align.split(u" "):
+        s,t=pair.split(u"-")
+        if int(t) not in alignment:
+            alignment[int(t)]=[]
+        alignment[int(t)].append(int(s))
+    return alignment
+
+def document_iterator(f):
+
+    document=[]
+    document_id=None
+    for sent in f: # label, category, source sent, target sent, alignment, doc id
+        cols=sent.strip().split(u"\t")
+        assert len(cols)==4 or len(cols)==6
+        if len(cols)==4:
+            idx=cols[3]
+        else:
+            idx=cols[5]
+        if document_id is None:
+            assert len(document)==0
+            document_id=idx
+        elif document_id!=idx:
+            yield document
+            document=[]
+            document_id=idx       
+        document.append(cols)
+    if document:
+        yield document
+            
+        
+
+def sentence_iterator(doc):
+
+    for sent in doc:
+        
+        if len(sent)==4:
+            yield sent,None
+            continue
+
+        label=sent[0]
+        target=sent[3]
+        to_be_replaced=[]
+        for i,tok in enumerate(target.split(u" ")):
+            if tok.startswith(u"REPLACE_"):
+                to_be_replaced.append(i)
+        assert len(to_be_replaced)==len(label.split(u" "))
+
+        yield sent,to_be_replaced
+
 
 def infinite_iter_data(f_name,max_rounds=None, max_items=None):
     round_counter=0
@@ -150,11 +205,14 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None):
         yield_counter = 0
         print >> sys.stderr, "next pass"
         with codecs.open(f_name, u"rt", u"utf-8") as f:
-            for r in iter_data(f, max_examples=0):
-                yield r
-                yield_counter +=1
-                if max_items is not None and yield_counter >= max_items:
-                    break
+
+            for doc_id, document in enumerate(document_iterator(f)):
+
+                for sent_id, r in enumerate(sentence_iterator(document)):
+                    yield r
+                    yield_counter +=1
+                    if max_items is not None and yield_counter >= max_items:
+                        break
         round_counter+=1
         if max_rounds is not None and round_counter==max_rounds:
             break
