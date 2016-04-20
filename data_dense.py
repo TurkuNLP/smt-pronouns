@@ -37,9 +37,13 @@ class Vocabularies(object):
             return dict.get(label,dict[u"<UNK>"])
 
 
-def get_example_count(training_fname):
+def get_example_count(training_fname, vs, window):
+    count = 0
+    ms=make_matrices(1,window,len(vs.label))
     raw_data=infinite_iter_data(training_fname,max_rounds=1)
-    return len([x for x in raw_data])
+    for minibatch in fill_batch(ms,vs,raw_data):
+        count += 1
+    return count
 
 def read_vocabularies(training_fname,force_rebuild):
     voc_fname=training_fname+"-vocabularies.pickle"
