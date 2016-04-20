@@ -15,11 +15,11 @@ import sys
 from svm_pronouns import iter_data
 import json
 import copy
-from data_dense_ng import *
+from data_dense import *
 from sklearn.metrics import recall_score
-
+window = 50
 #First argument is the model_json
-model_json_f = ays.argv[1]
+model_json_f = sys.argv[1]
 #Second argument is the model_weight file
 model_weight_f = sys.argv[2]
 #3. tr_dt_file
@@ -33,7 +33,7 @@ out_prefix = sys.argv[5]
 vs=read_vocabularies(tr_dt_file,force_rebuild=False)
 
 #Hummm... okay need to think this
-#vs.trainable = False Doesnt work :/
+vs.trainable = False
 
 dev_data_size = get_example_count(dev_dt_file, vs, window)
 #print dev_data_size
@@ -54,13 +54,18 @@ dev_data = fill_batch(dev_ms,vs,raw_dev_data).next()
 
 #Let's build a fancy functional model a'la new keras
 print 'Load model...'
+from keras.models import model_from_json
 model = model_from_json(open(model_json_f).read())
 index2label = {v:k for k,v in vs.label.items()}
 print '... Done!'
 #Load weights
 print 'Loading Weights ...'
-model.load_weights(model_wwight_f)
+model.load_weights(model_weight_f)
 print '... Done!'
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+import pdb;pdb.set_trace()
+
 #Let's predict!
 preds = model.predict(dev_data[0], verbose=1)
 dev_labels_text = []
