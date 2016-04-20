@@ -64,7 +64,7 @@ model.load_weights(model_weight_f)
 print '... Done!'
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-import pdb;pdb.set_trace()
+#import pdb;pdb.set_trace()
 
 #Let's predict!
 preds = model.predict(dev_data[0], verbose=1)
@@ -83,7 +83,14 @@ print classification_report(dev_labels_text, preds_text)
 import codecs
 out = codecs.open(out_prefix + '_gold', 'wt','utf8')
 raw_dev_data=infinite_iter_data(dev_dt_file,max_rounds=1)
-for eln in raw_dev_data:
+
+#dev_ms=make_matrices(dev_data_size,window,len(vs.label))
+#raw_dev_data=infinite_iter_data(dev_dt_file)
+#dev_data = fill_batch(dev_ms,vs,raw_dev_data).next()
+
+for elns in raw_dev_data:
+
+    eln = elns[0]
     if eln[1] == None:
         out.write(u'\t\t' + u'\t'.join(eln[0][:-1]) + '\n')
     else:
@@ -94,7 +101,10 @@ out.close()
 
 out = codecs.open(out_prefix + '_pred', 'wt','utf8')
 raw_dev_data=infinite_iter_data(dev_dt_file,max_rounds=1)
-for eln in raw_dev_data:
+for elns in raw_dev_data:
+
+    eln = elns[0]
+        
     if eln[1] == None:
         out.write(u'\t\t' + u'\t'.join(eln[0][:-1]) + '\n')
     else:
