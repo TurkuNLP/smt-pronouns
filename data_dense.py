@@ -20,11 +20,18 @@ class Vocabularies(object):
         self.target_word={u"<MASK>":0,u"<UNK>":1}
         self.target_pos={u"<MASK>":0,u"<UNK>":1}
         self.target_wordpos={u"<MASK>":0,u"<UNK>":1}
+
+        self.source_word_counter=collections.Counter()
+        self.target_word_counter=collections.Counter()
+        self.target_wordpos_counter=collections.Counter()
+
         self.label={u"<MASK>":0}
         self.trainable=True #If false, it will use <UNK>
 
-    def get_id(self,label,dict):
+    def get_id(self,label,dict,counter=None):
         if self.trainable:
+            if counter is not None:
+                counter.update([label])
             return dict.setdefault(label,len(dict)) #auto-grows
         else:
             return dict.get(label,dict[u"<UNK>"])
@@ -41,21 +48,33 @@ def read_vocabularies(training_fname,force_rebuild):
         print >> sys.stderr, "Making one pass to gather vocabulary"
         vs=Vocabularies()
         raw_data=infinite_iter_data(training_fname,max_rounds=1) #Make a single pass
-        for sent,replace_tokens in raw_data: # label, category, source sent, target sent, alignment, doc id
-            label=sent[0]
-            target=sent[3].strip().split(u" ")
-            target_wp=map(word_pos_split,target) #[[word,pos],...]
+        for (sent,replace_tokens), sent_id, document in raw_data: # label, category, source sent, target sent, alignment, doc id
+
+            if replace_tokens:
+                label=sent[0]
+                target=sent[3].strip().split(u" ")
+                target_wp=map(word_pos_split,target) #[[word,pos],...]
+            
+                source=sent[2].strip().split(u" ")
+                for l,replace in zip(label.split(u" "),replace_tokens):
+                    vs.get_id(l,vs.label)
+
+            else:
+                target=sent[1].strip().split(u" ")
+                target_wp=map(word_pos_split,target) #[[word,pos],...]
+
+                source=sent[0].strip().split(u" ")
+
             assert len(target)==len(target_wp)
-            source=sent[2].strip().split(u" ")
-            for l,replace in zip(label.split(u" "),replace_tokens):
-                vs.get_id(l,vs.label)
-                for wp in target:
-                    vs.get_id(wp,vs.target_wordpos)
-                for w,p in target_wp:
-                    vs.get_id(w,vs.target_word)
-                    vs.get_id(p,vs.target_pos)
-                for w in source:
-                    vs.get_id(w,vs.source_word)
+                
+           
+            for wp in target:
+                vs.get_id(wp,vs.target_wordpos,counter=vs.target_wordpos_counter)
+            for w,p in target_wp:
+                vs.get_id(w,vs.target_word,counter=vs.target_word_counter)
+                vs.get_id(p,vs.target_pos)
+            for w in source:
+                vs.get_id(w,vs.source_word,counter=vs.source_word_counter)
         print >> sys.stderr, "Saving new vocabularies to", voc_fname
         save_vocabularies(vs,voc_fname)
     else:
@@ -296,7 +315,9 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None):
             break
 
 if __name__=="__main__":
-    vs=read_vocabularies(u"train_data/all.en-fr.filtered.withids",force_rebuild=False) #makes new ones if not found
+    vs=read_vocabularies(u"train_data/all.en-fr.filtered.withids",force_rebuild=True) #makes new ones if not found
+    print "***"
+    print vs.source_word_counter.most_common(10)
     ms=make_matrices(3,100,len(vs.label)) #minibatchsize,window,label_count
     raw_data=infinite_iter_data(u"train_data/all.en-fr.filtered.withids")
     for minibatch in fill_batch(ms,vs,raw_data):
