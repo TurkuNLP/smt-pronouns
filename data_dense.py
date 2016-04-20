@@ -86,6 +86,63 @@ def word_pos_split(word_pos):
         return w_p
 
 
+def yield_context(token_id, sent_id, document, lang, window, direction):
+    """ token_id = index of the token where to start (replace token, or its aligned source word)
+        sent_id = id of the sentence where the token is
+        document = full document
+        lang = source (2) or target (3) index
+        window = context window size
+        direction = read backwards (-1) or forwards (1)
+        returns tokens (strings)
+
+        TODO: implement skipping useless words here!
+    """
+    if direction==-1:
+        counter=0
+        for i in xrange(sent_id,-1,-1):
+            if len(document[i])==4:
+                lang_idx=lang-2
+            else:
+                lang_idx=lang
+            text=document[i][lang_idx].split(u" ")
+            if i!=sent_id:
+                token_id=len(text) # read from the end of sentence
+            for j in xrange(token_id-1,-1,-1):
+                token=text[j]
+                yield token
+                counter+=1
+                if counter>=window:
+                    break
+            else:
+                continue
+            break
+#        else:
+#            print >> sys.stderr, "end of document --> sentence_id:", sent_id, "context size:", counter
+
+    if direction==1:
+        counter=0
+        for i in xrange(sent_id,len(document)):
+            if len(document[i])==4:
+                lang_idx=lang-2
+            else:
+                lang_idx=lang
+            text=document[i][lang_idx].split(u" ")
+            for j in xrange(token_id+1,len(text)):
+                token=text[j]
+                yield token
+                counter+=1
+                if counter>=window:
+                    break
+            else:
+                token_id=-1 # for now on, read sentences from beginning
+                continue
+            break
+#        else:
+#            print >> sys.stderr, "end of document --> sentence_id:", sent_id, "context size:", counter
+                
+    
+
+
 
 def fill_batch(ms,vs,data_iterator):
     """ Iterates over the data_iterator and fills the index matrices with fresh data
@@ -95,16 +152,16 @@ def fill_batch(ms,vs,data_iterator):
     matrix_dict=dict(zip(ms._fields,ms)) #the named tuple as dict, what we return
     batchsize,window=ms.target_word_left.shape
     row=0
-    for sent,replace_tokens in data_iterator: # label, category, source sent, target sent, alignment, doc id
+    for (sent,replace_tokens), sent_id, document in data_iterator: # label, category, source sent, target sent, alignment, doc id
 
         if not replace_tokens:
             continue
 
         label=sent[0]
-        target=sent[3].strip().split(u" ")
-        target_wp=map(word_pos_split,target) #[[word,pos],...]
-        assert len(target)==len(target_wp)
-        source=sent[2].strip().split(u" ")
+        #target=sent[3].strip().split(u" ")
+        #target_wp=map(word_pos_split,target) #[[word,pos],...]
+        #assert len(target)==len(target_wp)
+        #source=sent[2].strip().split(u" ")
 
         alignments=create_alignments(sent[4])
 
@@ -113,26 +170,46 @@ def fill_batch(ms,vs,data_iterator):
             ms.labels[row] = 0#np.zeros(ms.labels[row].shape)
             ms.labels[row][vs.get_id(l,vs.label)] = 1
 
-            target_lwindow=xrange(replace-1,max(0,replace-window)-1,-1) #left window
-            target_rwindow=xrange(replace+1,min(len(target),replace+window)) #right window
-            for j,target_idx in enumerate(target_lwindow):
-                ms.target_word_left[row,j]=vs.get_id(target_wp[target_idx][0],vs.target_word)
-                ms.target_pos_left[row,j]=vs.get_id(target_wp[target_idx][1],vs.target_pos)
-                ms.target_wordpos_left[row,j]=vs.get_id(target[target_idx],vs.target_wordpos)
-            for j,target_idx in enumerate(target_rwindow):
-                ms.target_word_right[row,j]=vs.get_id(target_wp[target_idx][0],vs.target_word)
-                ms.target_pos_right[row,j]=vs.get_id(target_wp[target_idx][1],vs.target_pos)
-                ms.target_wordpos_right[row,j]=vs.get_id(target[target_idx],vs.target_wordpos)
+            # target left
+            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1)): # token_id, sent_id, document, lang, window, direction             
+                ms.target_word_left[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word) # word
+                ms.target_pos_left[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
+                ms.target_wordpos_left[row,j]=vs.get_id(token,vs.target_wordpos) # wordpos
+            # target right
+            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,1)):        
+                ms.target_word_right[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word) # word
+                ms.target_pos_right[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
+                ms.target_wordpos_right[row,j]=vs.get_id(token,vs.target_wordpos) # wordpos
 
-            # now source
-            assert replace in alignments 
+            # source
             source_token=alignments[replace][0] # TODO: not just first one...?
-            source_lwindow=xrange(source_token-1,max(0,source_token-window)-1,-1)
-            source_rwindow=xrange(source_token+1,min(len(source),source_token+window))
-            for j,source_idx in enumerate(source_lwindow):
-                ms.source_word_left[row,j]=vs.get_id(source[source_idx],vs.source_word)
-            for j,source_idx in enumerate(source_rwindow):
-                ms.source_word_right[row,j]=vs.get_id(source[source_idx],vs.source_word)
+            # source left
+            for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,-1)):    
+                ms.source_word_left[row,j]=vs.get_id(token,vs.source_word) # word
+            # source right
+            for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,1)):     
+                ms.source_word_right[row,j]=vs.get_id(token,vs.source_word) # word
+
+#            target_lwindow=xrange(replace-1,max(0,replace-window)-1,-1) #left window
+#            target_rwindow=xrange(replace+1,min(len(target),replace+window)) #right window
+#            for j,target_idx in enumerate(target_lwindow):
+#                ms.target_word_left[row,j]=vs.get_id(target_wp[target_idx][0],vs.target_word)
+#                ms.target_pos_left[row,j]=vs.get_id(target_wp[target_idx][1],vs.target_pos)
+#                ms.target_wordpos_left[row,j]=vs.get_id(target[target_idx],vs.target_wordpos)
+#            for j,target_idx in enumerate(target_rwindow):
+#                ms.target_word_right[row,j]=vs.get_id(target_wp[target_idx][0],vs.target_word)
+#                ms.target_pos_right[row,j]=vs.get_id(target_wp[target_idx][1],vs.target_pos)
+#                ms.target_wordpos_right[row,j]=vs.get_id(target[target_idx],vs.target_wordpos)
+
+#            # now source
+#            assert replace in alignments 
+#            source_token=alignments[replace][0] # TODO: not just first one...?
+#            source_lwindow=xrange(source_token-1,max(0,source_token-window)-1,-1)
+#            source_rwindow=xrange(source_token+1,min(len(source),source_token+window))
+#            for j,source_idx in enumerate(source_lwindow):
+#                ms.source_word_left[row,j]=vs.get_id(source[source_idx],vs.source_word)
+#            for j,source_idx in enumerate(source_rwindow):
+#                ms.source_word_right[row,j]=vs.get_id(source[source_idx],vs.source_word)
             
 
             row+=1
@@ -159,6 +236,7 @@ def document_iterator(f):
 
     document=[]
     document_id=None
+
     for sent in f: # label, category, source sent, target sent, alignment, doc id
         cols=sent.strip().split(u"\t")
         assert len(cols)==4 or len(cols)==6
@@ -209,7 +287,7 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None):
             for doc_id, document in enumerate(document_iterator(f)):
 
                 for sent_id, r in enumerate(sentence_iterator(document)):
-                    yield r
+                    yield r, sent_id, document
                     yield_counter +=1
                     if max_items is not None and yield_counter >= max_items:
                         break
