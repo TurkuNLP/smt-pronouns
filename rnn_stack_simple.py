@@ -46,7 +46,7 @@ class CustomCallback(Callback):
 
         if self.best_mr < recall_score(self.dev_labels_text,preds_text,average=u"macro"):
             self.best_mr = recall_score(self.dev_labels_text,preds_text,average=u"macro")
-            model.save_weights(self.model_name + '_full_' + str(epoch) + '_MR_' + str(self.best_mr) + '.hdf5')
+            model.save_weights('./models_gru/' + self.model_name + '_' + str(epoch) + '_MR_' + str(self.best_mr) + '.hdf5')
             print 'Saved Weights!'
 
 
@@ -72,9 +72,9 @@ index2vocab = None
 dist_labels= None
 label2index = None
 index2label = None
-window=90
+window=50
 vec_size = 90
-minibatch_size = 1000
+minibatch_size = 500
 
 def get_labels(data, vs):
 
@@ -105,25 +105,35 @@ tr_dt_file = sys.argv[1]
 dev_dt_file = sys.argv[2]
 
 #Third is the second dev set
-dev_dt_file_2 = sys.argv[2]
+dev_dt_file_2 = sys.argv[3]
 
 #Third is the model_name
-this_model_name = sys.argv[3]
+this_model_name = sys.argv[4]
 
 #Third argument is stacked or not stacked
-stacked = sys.argv[4] == 'stack'
+stacked = sys.argv[5] == 'stack'
 
 #Let us load the data
-vs=read_vocabularies(tr_dt_file,force_rebuild=True)
-vs.trainable = False Doesnt work :/
+vs=read_vocabularies(tr_dt_file,force_rebuild=False)
+vs.trainable = False
 
-training_data_size = get_example_count(tr_dt_file)
-dev_data_size = get_example_count(tr_dt_file)
+print 'Getting datasizes:'
+#training_fname, vs, window
+training_data_size = get_example_count(tr_dt_file, vs, window)
+dev_data_size = get_example_count(dev_dt_file, vs, window)
 
 #Let's get the dev data generator
 dev_ms=make_matrices(dev_data_size,window,len(vs.label))
 raw_dev_data=infinite_iter_data(dev_dt_file)
 dev_data = fill_batch(dev_ms,vs,raw_dev_data).next()
+
+dev_data_2=None
+#Sorry T_T
+if len(dev_dt_file_2) > 2:
+    dev_data_size_2 = get_example_count(dev_dt_file_2)
+    dev_ms_2 = make_matrices(dev_data_size_2,window,len(vs.label))
+    raw_dev_data_2 = infinite_iter_data(dev_dt_file_2)
+    dev_data_2 = fill_batch(dev_ms,vs,raw_dev_data).next()
 
 #Let's get the training data
 train_ms=make_matrices(minibatch_size,window,len(vs.label))
@@ -270,7 +280,14 @@ open('./model_architectures/' + this_model_name + '_stack_' + str(stacked) + '_a
 
 index2label = {v:k for k,v in vs.label.items()}
 evalcb=CustomCallback(dev_data[0],dev_data[1],index2label, this_model_name + '_stack_' + str(stacked))
-savecb=ModelCheckpoint(u"rnn_model_gru.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto')
+
+if dev_data_2 != None:
+    evalcb2=CustomCallback(dev_data_2[0],dev_data_2[1],index2label, this_model_name + '_dev_2_stack_' + str(stacked))
+    model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb,evalcb2])
+else:
+    model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb])
+
+#savecb=ModelCheckpoint(u"rnn_model_gru.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto')
 #import pdb;pdb.set_trace()
-model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb,savecb])
+
 
