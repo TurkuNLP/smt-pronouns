@@ -212,13 +212,17 @@ def fill_batch(ms,vs,data_iterator):
                 ms.target_wordpos_right[row,j]=vs.get_id(token,vs.target_wordpos,vs.target_wordpos_counter) # wordpos
 
             # source
-            source_token=alignments[replace][0] # TODO: not just first one...?
-            # source left
-            for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,-1)):    
+            source_tokens=alignments[replace] # all tokens aligned with replace
+            assert source_tokens==sorted(source_tokens)
+#            assert source_tokens == range(source_tokens[0], source_tokens[-1]+1) # check if there are gaps in replace alignments --> yes, there are...
+
+            # source left (start reading from last aligned word, +1 because source_token is otherwise not included)
+            for j, token in enumerate(yield_context(source_tokens[-1]+1,sent_id,document,2,window,-1)):
                 ms.source_word_left[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
-            # source right
-            for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,1)):     
+            # source right (start reading from first aligned word)
+            for j, token in enumerate(yield_context(source_tokens[0]-1,sent_id,document,2,window,1)):   
                 ms.source_word_right[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
+
 
 #            target_lwindow=xrange(replace-1,max(0,replace-window)-1,-1) #left window
 #            target_rwindow=xrange(replace+1,min(len(target),replace+window)) #right window
