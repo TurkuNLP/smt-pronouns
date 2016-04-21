@@ -9,10 +9,10 @@ import random
 
 # This named tuple holds the matrices which make one minibatch
 # We will not be making new ones for every minibatch, we'll just wipe the existing ones
-Matrices=collections.namedtuple("Matrices",["source_word_left","target_word_left","target_pos_left","target_wordpos_left","source_word_right","target_word_right","target_pos_right","target_wordpos_right","labels"])
+Matrices=collections.namedtuple("Matrices",["source_word_left","target_word_left","target_pos_left","target_wordpos_left","source_word_right","target_word_right","target_pos_right","target_wordpos_right","aligned_pronouns","labels"])
 def make_matrices(minibatch_size,context_size,label_count):
-    ms=Matrices(*(np.zeros((minibatch_size,context_size),np.int) for _ in Matrices._fields[:-1]),\
-                     labels=np.zeros((minibatch_size,label_count),np.int))
+    ms=Matrices(*(np.zeros((minibatch_size,context_size),np.int) for _ in Matrices._fields[:-2]),\
+                     aligned_pronouns=np.zeros((minibatch_size,1),np.int),labels=np.zeros((minibatch_size,label_count),np.int))
     return ms
 
 class Vocabularies(object):
@@ -21,6 +21,7 @@ class Vocabularies(object):
         self.target_word={u"<MASK>":0,u"<UNK>":1}
         self.target_pos={u"<MASK>":0,u"<UNK>":1}
         self.target_wordpos={u"<MASK>":0,u"<UNK>":1}
+        self.aligned_pronouns={u"MASK":0,u"<UNK>":1}
 
         self.source_word_counter=collections.Counter()
         self.target_word_counter=collections.Counter()
@@ -67,8 +68,15 @@ def read_vocabularies(training_fname,force_rebuild):
                 target_wp=map(word_pos_split,target) #[[word,pos],...]
             
                 source=sent[2].strip().split(u" ")
+
+                alignments=create_alignments(sent[4])
+
                 for l,replace in zip(label.split(u" "),replace_tokens):
                     vs.get_id(l,vs.label)
+
+                    source_tokens=alignments[replace] # all tokens aligned with replace
+                    pron=u" ".join(source[t] for t in source_tokens)
+                    vs.get_id(pron,vs.aligned_pronouns)
 
             else:
                 target=sent[1].strip().split(u" ")
@@ -191,7 +199,7 @@ def fill_batch(ms,vs,data_iterator):
         #target=sent[3].strip().split(u" ")
         #target_wp=map(word_pos_split,target) #[[word,pos],...]
         #assert len(target)==len(target_wp)
-        #source=sent[2].strip().split(u" ")
+        source=sent[2].strip().split(u" ")
 
         alignments=create_alignments(sent[4])
 
@@ -199,6 +207,11 @@ def fill_batch(ms,vs,data_iterator):
 
             ms.labels[row] = 0#np.zeros(ms.labels[row].shape)
             ms.labels[row][vs.get_id(l,vs.label)] = 1
+
+            # aligned pronoun
+            source_tokens=alignments[replace] # all tokens aligned with replace
+            pron=u" ".join(source[t] for t in source_tokens)
+            ms.aligned_pronouns[row,0]=vs.get_id(pron,vs.aligned_pronouns)
 
             # target left
             for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1)): # token_id, sent_id, document, lang, window, direction             

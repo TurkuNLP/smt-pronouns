@@ -1,6 +1,6 @@
 from keras.models import Sequential, Graph, Model
 from keras.layers import Dense, Dropout, Activation, Merge, Input, merge
-from keras.layers.core import Masking
+from keras.layers.core import Masking, Flatten
 from keras.layers.recurrent import LSTM, GRU
 from keras.optimizers import SGD
 from keras.datasets import reuters
@@ -108,10 +108,10 @@ dev_dt_file = sys.argv[2]
 stacked = len(sys.argv) > 3
 
 #Let us load the data
-vs=read_vocabularies(tr_dt_file,force_rebuild=True)
+vs=read_vocabularies(tr_dt_file,force_rebuild=False)
 
 #vs.trainable = False Doesnt work :/
-training_data_size = get_example_count(tr_dt_file)
+training_data_size = get_example_count(tr_dt_file,vs,window)
 
 #Let's get the dev data generator
 dev_ms=make_matrices(560,window,len(vs.label))
@@ -138,12 +138,15 @@ right_target_wordpos = Input(shape=(window, ), name='target_wordpos_right', dtyp
 left_source = Input(shape=(window, ), name='source_word_left', dtype='int32')
 right_source = Input(shape=(window, ), name='source_word_right', dtype='int32')
 
+pronoun_input = Input(shape=(1, ), name='aligned_pronouns', dtype='int32') # pronoun input
+
 #Then the embeddings
 from keras.layers.embeddings import Embedding
 shared_emb_pos = Embedding(len(vs.target_pos), vec_size, input_length=window, mask_zero=True)
 shared_emb_wordpos = Embedding(len(vs.target_wordpos), vec_size, input_length=window, mask_zero=True)
 shared_emb = Embedding(len(vs.target_word), vec_size, input_length=window, mask_zero=True)
 shared_emb_src = Embedding(len(vs.source_word), vec_size, input_length=window, mask_zero=True)
+pronoun_emb = Embedding(len(vs.aligned_pronouns), vec_size, input_length=1) # pronoun embedding
 
 vector_left_source = shared_emb_src(left_source)
 vector_right_source = shared_emb_src(right_source)
@@ -156,6 +159,10 @@ vector_right_target = shared_emb(right_target)
 
 vector_left_target_wordpos = shared_emb_wordpos(left_target_wordpos)
 vector_right_target_wordpos = shared_emb_wordpos(right_target_wordpos)
+
+flattener = Flatten()
+
+vector_pronoun = flattener(pronoun_emb(pronoun_input)) # pronoun
 
 
 #Here I merged pos and word into one
@@ -218,7 +225,7 @@ if stacked:
     right_target_wordpos_lstm_out = right_lstm_wordpos_t(right_target_wordpos_lstm_out_1)
 
     #A monster!
-    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out], mode='concat', concat_axis=-1)
+    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out, vector_pronoun], mode='concat', concat_axis=-1)
 
 else:
 
@@ -248,13 +255,13 @@ else:
     right_target_wordpos_lstm_out = right_lstm_wordpos(vector_right_target_wordpos)
 
     #A monster!
-    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out], mode='concat', concat_axis=-1)
+    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out, vector_pronoun], mode='concat', concat_axis=-1)
 
 #The prediction layer
 dense_out = Dense(256, activation='relu')(merged_vector)
 predictions = Dense(len(vs.label), activation='softmax', name='labels')(dense_out)
 
-model = Model(input=[left_target_wordpos, right_target_wordpos ,left_target, right_target, left_target_pos, right_target_pos, left_source, right_source], output=predictions)
+model = Model(input=[left_target_wordpos, right_target_wordpos ,left_target, right_target, left_target_pos, right_target_pos, left_source, right_source, pronoun_input], output=predictions)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 index2label = {v:k for k,v in vs.label.items()}
