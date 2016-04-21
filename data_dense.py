@@ -5,6 +5,7 @@ import codecs
 import sys
 import cPickle as pickle
 import os.path
+import random
 
 # This named tuple holds the matrices which make one minibatch
 # We will not be making new ones for every minibatch, we'll just wipe the existing ones
@@ -35,6 +36,13 @@ class Vocabularies(object):
             return dict.setdefault(label,len(dict)) #auto-grows
         else:
             return dict.get(label,dict[u"<UNK>"])
+#            if dict==self.label:
+#                return dict.get(label)
+#            if counter is not None:
+#                count=counter[label]
+#                if count<2:
+#                    return dict.get(u"<UNK>") # TODO: finish
+#            return dict.get(label,dict[u"<UNK>"])
 
 
 def get_example_count(training_fname, vs, window):
@@ -208,10 +216,10 @@ def fill_batch(ms,vs,data_iterator):
             source_token=alignments[replace][0] # TODO: not just first one...?
             # source left
             for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,-1)):    
-                ms.source_word_left[row,j]=vs.get_id(token,vs.source_word) # word
+                ms.source_word_left[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
             # source right
             for j, token in enumerate(yield_context(source_token,sent_id,document,2,window,1)):     
-                ms.source_word_right[row,j]=vs.get_id(token,vs.source_word) # word
+                ms.source_word_right[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
 
 #            target_lwindow=xrange(replace-1,max(0,replace-window)-1,-1) #left window
 #            target_rwindow=xrange(replace+1,min(len(target),replace+window)) #right window
@@ -299,7 +307,7 @@ def sentence_iterator(doc):
         yield sent,to_be_replaced
 
 
-def infinite_iter_data(f_name,max_rounds=None, max_items=None):
+def infinite_iter_data(f_name,max_rounds=None, max_items=None, shuffle=False):
     round_counter=0
 
     while True:
@@ -307,8 +315,15 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None):
         print >> sys.stderr, "next pass"
         with codecs.open(f_name, u"rt", u"utf-8") as f:
 
-            for doc_id, document in enumerate(document_iterator(f)):
+            documents=[]
 
+            for doc_id, document in enumerate(document_iterator(f)):
+                documents.append(document)
+
+            if shuffle:
+                random.shuffle(documents)
+
+            for document in documents:
                 for sent_id, r in enumerate(sentence_iterator(document)):
                     yield r, sent_id, document
                     yield_counter +=1
@@ -319,11 +334,13 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None):
             break
 
 if __name__=="__main__":
-    vs=read_vocabularies(u"train_data/all.en-fr.filtered.withids",force_rebuild=True) #makes new ones if not found
+    vs=read_vocabularies(u"train_data/NCv9.en-fr.data.filtered.withids",force_rebuild=False) #makes new ones if not found
     print "***"
     print vs.source_word_counter.most_common(10)
+    vs.trainable=False
     ms=make_matrices(3,100,len(vs.label)) #minibatchsize,window,label_count
-    raw_data=infinite_iter_data(u"train_data/all.en-fr.filtered.withids")
+#    raw_data=infinite_iter_data(u"train_data/IWSLT15.en-fr.data.filtered.withids")
+    raw_data=infinite_iter_data(u"train_data/NCv9.en-fr.data.filtered.withids",shuffle=True)
     for minibatch in fill_batch(ms,vs,raw_data):
         pass
 
