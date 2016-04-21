@@ -35,14 +35,13 @@ class Vocabularies(object):
                 counter.update([label])
             return dict.setdefault(label,len(dict)) #auto-grows
         else:
-            return dict.get(label,dict[u"<UNK>"])
-#            if dict==self.label:
-#                return dict.get(label)
-#            if counter is not None:
-#                count=counter[label]
-#                if count<2:
-#                    return dict.get(u"<UNK>") # TODO: finish
 #            return dict.get(label,dict[u"<UNK>"])
+            if dict==self.label:
+                return dict.get(label)
+            if counter is not None:
+                if counter[label]==1:
+                    return dict.get(u"<UNK>")
+            return dict.get(label,dict[u"<UNK>"])
 
 
 def get_example_count(training_fname, vs, window):
@@ -203,14 +202,14 @@ def fill_batch(ms,vs,data_iterator):
 
             # target left
             for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1)): # token_id, sent_id, document, lang, window, direction             
-                ms.target_word_left[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word) # word
+                ms.target_word_left[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word,vs.target_word_counter) # word
                 ms.target_pos_left[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
-                ms.target_wordpos_left[row,j]=vs.get_id(token,vs.target_wordpos) # wordpos
+                ms.target_wordpos_left[row,j]=vs.get_id(token,vs.target_wordpos,vs.target_wordpos_counter) # wordpos
             # target right
             for j, token in enumerate(yield_context(replace,sent_id,document,3,window,1)):        
-                ms.target_word_right[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word) # word
+                ms.target_word_right[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word,vs.target_word_counter) # word
                 ms.target_pos_right[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
-                ms.target_wordpos_right[row,j]=vs.get_id(token,vs.target_wordpos) # wordpos
+                ms.target_wordpos_right[row,j]=vs.get_id(token,vs.target_wordpos,vs.target_wordpos_counter) # wordpos
 
             # source
             source_token=alignments[replace][0] # TODO: not just first one...?
@@ -339,8 +338,8 @@ if __name__=="__main__":
     print vs.source_word_counter.most_common(10)
     vs.trainable=False
     ms=make_matrices(3,100,len(vs.label)) #minibatchsize,window,label_count
-#    raw_data=infinite_iter_data(u"train_data/IWSLT15.en-fr.data.filtered.withids")
-    raw_data=infinite_iter_data(u"train_data/NCv9.en-fr.data.filtered.withids",shuffle=True)
+    raw_data=infinite_iter_data(u"train_data/IWSLT15.en-fr.data.filtered.withids")
+#    raw_data=infinite_iter_data(u"train_data/NCv9.en-fr.data.filtered.withids",shuffle=True)
     for minibatch in fill_batch(ms,vs,raw_data):
         pass
 
