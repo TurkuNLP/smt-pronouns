@@ -124,7 +124,7 @@ def word_pos_split(word_pos):
         return w_p
 
 
-def yield_context(token_id, sent_id, document, lang, window, direction):
+def yield_context(token_id, sent_id, document, lang, window, direction, sentence_context=False):
     """ token_id = index of the token where to start (replace token, or its aligned source word)
         sent_id = id of the sentence where the token is
         document = full document
@@ -143,6 +143,10 @@ def yield_context(token_id, sent_id, document, lang, window, direction):
             else:
                 lang_idx=lang
             text=document[i][lang_idx].split(u" ")
+
+            if i!=sent_id and sentence_context:
+                break
+
             if i!=sent_id:
                 token_id=len(text) # read from the end of sentence
             for j in xrange(token_id-1,-1,-1):
@@ -154,8 +158,7 @@ def yield_context(token_id, sent_id, document, lang, window, direction):
             else:
                 continue
             break
-#        else:
-#            print >> sys.stderr, "end of document --> sentence_id:", sent_id, "context size:", counter
+
 
     if direction==1:
         counter=0
@@ -173,16 +176,14 @@ def yield_context(token_id, sent_id, document, lang, window, direction):
                     break
             else:
                 token_id=-1 # for now on, read sentences from beginning
+                if sentence_context:
+                    break
                 continue
             break
-#        else:
-#            print >> sys.stderr, "end of document --> sentence_id:", sent_id, "context size:", counter
-                
-    
 
 
 
-def fill_batch(ms,vs,data_iterator):
+def fill_batch(ms,vs,data_iterator, sentence_context=False):
     """ Iterates over the data_iterator and fills the index matrices with fresh data
         ms = matrices, vs = vocabularies
     """
@@ -214,12 +215,12 @@ def fill_batch(ms,vs,data_iterator):
             ms.aligned_pronouns[row,0]=vs.get_id(pron,vs.aligned_pronouns)
 
             # target left
-            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1)): # token_id, sent_id, document, lang, window, direction             
+            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1, sentence_context=sentence_context)): # token_id, sent_id, document, lang, window, direction             
                 ms.target_word_left[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word,vs.target_word_counter) # word
                 ms.target_pos_left[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
                 ms.target_wordpos_left[row,j]=vs.get_id(token,vs.target_wordpos,vs.target_wordpos_counter) # wordpos
             # target right
-            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,1)):        
+            for j, token in enumerate(yield_context(replace,sent_id,document,3,window,1, sentence_context=sentence_context)):        
                 ms.target_word_right[row,j]=vs.get_id(word_pos_split(token)[0],vs.target_word,vs.target_word_counter) # word
                 ms.target_pos_right[row,j]=vs.get_id(word_pos_split(token)[1],vs.target_pos) # pos
                 ms.target_wordpos_right[row,j]=vs.get_id(token,vs.target_wordpos,vs.target_wordpos_counter) # wordpos
@@ -230,10 +231,10 @@ def fill_batch(ms,vs,data_iterator):
 #            assert source_tokens == range(source_tokens[0], source_tokens[-1]+1) # check if there are gaps in replace alignments --> yes, there are...
 
             # source left (start reading from last aligned word, +1 because source_token is otherwise not included)
-            for j, token in enumerate(yield_context(source_tokens[-1]+1,sent_id,document,2,window,-1)):
+            for j, token in enumerate(yield_context(source_tokens[-1]+1,sent_id,document,2,window,-1, sentence_context=sentence_context)):
                 ms.source_word_left[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
             # source right (start reading from first aligned word)
-            for j, token in enumerate(yield_context(source_tokens[0]-1,sent_id,document,2,window,1)):   
+            for j, token in enumerate(yield_context(source_tokens[0]-1,sent_id,document,2,window,1, sentence_context=sentence_context)):   
                 ms.source_word_right[row,j]=vs.get_id(token,vs.source_word,vs.source_word_counter) # word
 
 

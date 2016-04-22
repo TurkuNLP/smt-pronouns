@@ -1,6 +1,6 @@
 from keras.models import Sequential, Graph, Model
 from keras.layers import Dense, Dropout, Activation, Merge, Input, merge
-from keras.layers.core import Masking
+from keras.layers.core import Masking, Flatten
 from keras.layers.recurrent import LSTM, GRU
 from keras.optimizers import SGD
 from keras.datasets import reuters
@@ -74,7 +74,7 @@ label2index = None
 index2label = None
 window=50
 vec_size = 90
-minibatch_size = 500
+minibatch_size = 1000
 
 def get_labels(data, vs):
 
@@ -114,18 +114,23 @@ this_model_name = sys.argv[4]
 stacked = sys.argv[5] == 'stack'
 
 #Let us load the data
-vs=read_vocabularies(tr_dt_file,force_rebuild=False)
+vs=read_vocabularies(tr_dt_file,force_rebuild=True)
 vs.trainable = False
 
 print 'Getting datasizes:'
 #training_fname, vs, window
-training_data_size = get_example_count(tr_dt_file, vs, window)
+training_data_size = 500000#20000#get_example_count(tr_dt_file, vs, window)
+tr_count_dict = {'en-fr':598823, 'en-de':586449, 'de-en':659013, 'fr-en':760300}
+for key in tr_count_dict.keys():
+    if key in tr_dt_file:
+        training_data_size = tr_count_dict[key]
+
 dev_data_size = get_example_count(dev_dt_file, vs, window)
 
 #Let's get the dev data generator
 dev_ms=make_matrices(dev_data_size,window,len(vs.label))
 raw_dev_data=infinite_iter_data(dev_dt_file)
-dev_data = fill_batch(dev_ms,vs,raw_dev_data).next()
+dev_data = fill_batch(dev_ms,vs,raw_dev_data, sentence_context=True).next()
 
 dev_data_2=None
 #Sorry T_T
@@ -137,7 +142,7 @@ if len(dev_dt_file_2) > 2:
 
 #Let's get the training data
 train_ms=make_matrices(minibatch_size,window,len(vs.label))
-raw_train_data=infinite_iter_data(tr_dt_file)
+raw_train_data=infinite_iter_data(tr_dt_file, shuffle=True)
 
 #Let's build a fancy functional model a'la new keras
 print 'Build model...'
@@ -155,12 +160,15 @@ right_target_wordpos = Input(shape=(window, ), name='target_wordpos_right', dtyp
 left_source = Input(shape=(window, ), name='source_word_left', dtype='int32')
 right_source = Input(shape=(window, ), name='source_word_right', dtype='int32')
 
+pronoun_input = Input(shape=(1, ), name='aligned_pronouns', dtype='int32') # pronoun input
+
 #Then the embeddings
 from keras.layers.embeddings import Embedding
 shared_emb_pos = Embedding(len(vs.target_pos), vec_size, input_length=window, mask_zero=True)
 shared_emb_wordpos = Embedding(len(vs.target_wordpos), vec_size, input_length=window, mask_zero=True)
 shared_emb = Embedding(len(vs.target_word), vec_size, input_length=window, mask_zero=True)
 shared_emb_src = Embedding(len(vs.source_word), vec_size, input_length=window, mask_zero=True)
+pronoun_emb = Embedding(len(vs.aligned_pronouns), vec_size, input_length=1) # pronoun embedding
 
 vector_left_source = shared_emb_src(left_source)
 vector_right_source = shared_emb_src(right_source)
@@ -174,6 +182,9 @@ vector_right_target = shared_emb(right_target)
 vector_left_target_wordpos = shared_emb_wordpos(left_target_wordpos)
 vector_right_target_wordpos = shared_emb_wordpos(right_target_wordpos)
 
+premb = pronoun_emb(pronoun_input)
+flattener = Flatten()
+vector_pronoun = flattener(premb)# pronoun
 
 #Here I merged pos and word into one
 #merged_right = merge([vector_right_target, vector_right_target_pos], mode='concat', concat_axis=-1)
@@ -235,7 +246,7 @@ if stacked:
     right_target_wordpos_lstm_out = right_lstm_wordpos_t(right_target_wordpos_lstm_out_1)
 
     #A monster!
-    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out], mode='concat', concat_axis=-1)
+    merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out, vector_pronoun], mode='concat', concat_axis=-1)
 
 else:
 
@@ -268,15 +279,15 @@ else:
     merged_vector = merge([right_target_wordpos_lstm_out, left_target_wordpos_lstm_out, left_target_pos_lstm_out, right_target_pos_lstm_out, left_target_lstm_out, right_target_lstm_out, left_source_lstm_out, right_source_lstm_out], mode='concat', concat_axis=-1)
 
 #The prediction layer
-dense_out = Dense(256, activation='relu')(merged_vector)
+dense_out = Dense(320, activation='relu')(merged_vector)
 predictions = Dense(len(vs.label), activation='softmax', name='labels')(dense_out)
 
-model = Model(input=[left_target_wordpos, right_target_wordpos ,left_target, right_target, left_target_pos, right_target_pos, left_source, right_source], output=predictions)
+model = Model(input=[left_target_wordpos, right_target_wordpos ,left_target, right_target, left_target_pos, right_target_pos, left_source, right_source, pronoun_input], output=predictions)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-print "Saving model"
-json_string = model.to_json()
-open('./model_architectures/' + this_model_name + '_stack_' + str(stacked) + '_architecture.json', 'w').write(json_string)
+#model.load_weights('/home/mjluot/Projects/wmt16_pronoun/clean_repo/smt-pronouns/models_gru/enfr_stack_False_0_MR_0.125.hdf5')
+#print "Saving model"
+
 
 index2label = {v:k for k,v in vs.label.items()}
 evalcb=CustomCallback(dev_data[0],dev_data[1],index2label, this_model_name + '_stack_' + str(stacked))
@@ -285,7 +296,7 @@ if dev_data_2 != None:
     evalcb2=CustomCallback(dev_data_2[0],dev_data_2[1],index2label, this_model_name + '_dev_2_stack_' + str(stacked))
     model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb,evalcb2])
 else:
-    model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb])
+    model.fit_generator(fill_batch(train_ms,vs,raw_train_data, sentence_context=True), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb])
 
 #savecb=ModelCheckpoint(u"rnn_model_gru.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto')
 #import pdb;pdb.set_trace()
