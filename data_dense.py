@@ -23,6 +23,7 @@ class Vocabularies(object):
         self.target_wordpos={u"<MASK>":0,u"<UNK>":1}
         self.aligned_pronouns={u"MASK":0,u"<UNK>":1}
 
+        self.label_counter=collections.Counter()
         self.source_word_counter=collections.Counter()
         self.target_word_counter=collections.Counter()
         self.target_wordpos_counter=collections.Counter()
@@ -72,7 +73,7 @@ def read_vocabularies(training_fname,force_rebuild):
                 alignments=create_alignments(sent[4])
 
                 for l,replace in zip(label.split(u" "),replace_tokens):
-                    vs.get_id(l,vs.label)
+                    vs.get_id(l,vs.label,vs.label_counter)
 
                     source_tokens=alignments[replace] # all tokens aligned with replace
                     pron=u" ".join(source[t] for t in source_tokens)
@@ -351,9 +352,10 @@ def infinite_iter_data(f_name,max_rounds=None, max_items=None, shuffle=False):
             break
 
 if __name__=="__main__":
-    vs=read_vocabularies(u"train_data/NCv9.en-fr.data.filtered.withids",force_rebuild=False) #makes new ones if not found
+    vs=read_vocabularies(u"train_data/NCv9.en-fr.data.filtered.withids",force_rebuild=True) #makes new ones if not found
     print "***"
     print vs.source_word_counter.most_common(10)
+    print vs.label_counter
     vs.trainable=False
     ms=make_matrices(3,100,len(vs.label)) #minibatchsize,window,label_count
     raw_data=infinite_iter_data(u"train_data/IWSLT15.en-fr.data.filtered.withids")
