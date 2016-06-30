@@ -108,7 +108,7 @@ dev_dt_file = sys.argv[2]
 stacked = len(sys.argv) > 3
 
 #Let us load the data
-vs=read_vocabularies(tr_dt_file,force_rebuild=False)
+vs=read_vocabularies(tr_dt_file,force_rebuild=True)
 
 #vs.trainable = False Doesnt work :/
 training_data_size = get_example_count(tr_dt_file,vs,window)

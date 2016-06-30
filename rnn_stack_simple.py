@@ -296,7 +296,26 @@ if dev_data_2 != None:
     evalcb2=CustomCallback(dev_data_2[0],dev_data_2[1],index2label, this_model_name + '_dev_2_stack_' + str(stacked))
     model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb,evalcb2])
 else:
-    model.fit_generator(fill_batch(train_ms,vs,raw_train_data, sentence_context=True), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb])
+    #length_of_array = 0
+    weight_dict = dict(vs.label_counter)
+    target = 0.5
+    wsum = sum(weight_dict.values())
+    nwd = dict()
+    for k in weight_dict.keys():   
+        #weight_dict[k] = 1.0/float(weight_dict[k])
+        nwd[vs.label[k]] = 1.0/float(weight_dict[k])
+        #weight_dict[k] = 0.5/(float(weight_dict[k])/float(wsum))
+
+    from numpy import linalg
+    nnwd = dict()
+    for k in nwd.keys():
+        nnwd[k] = nwd[k]/linalg.norm(nwd.values())
+
+    print weight_dict, nnwd
+    print vs.label_counter
+    nnwd[0] = 0.0
+
+    model.fit_generator(fill_batch(train_ms,vs,raw_train_data, sentence_context=True), samples_per_epoch=training_data_size, nb_epoch=50, class_weight=nnwd, callbacks=[evalcb])
 
 #savecb=ModelCheckpoint(u"rnn_model_gru.model", monitor='val_acc', verbose=1, save_best_only=True, mode='auto')
 #import pdb;pdb.set_trace()
