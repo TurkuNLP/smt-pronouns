@@ -119,12 +119,9 @@ vs.trainable = False
 
 print 'Getting datasizes:'
 #training_fname, vs, window
-training_data_size = 500000#20000#get_example_count(tr_dt_file, vs, window)
-tr_count_dict = {'en-fr':598823, 'en-de':586449, 'de-en':659013, 'fr-en':760300}
-for key in tr_count_dict.keys():
-    if key in tr_dt_file:
-        training_data_size = tr_count_dict[key]
-
+print 'Getting datasizes:'
+#training_fname, vs, window
+training_data_size = get_example_count(tr_dt_file, vs, window)
 dev_data_size = get_example_count(dev_dt_file, vs, window)
 
 #Let's get the dev data generator
@@ -185,10 +182,6 @@ vector_right_target_wordpos = shared_emb_wordpos(right_target_wordpos)
 premb = pronoun_emb(pronoun_input)
 flattener = Flatten()
 vector_pronoun = flattener(premb)# pronoun
-
-#Here I merged pos and word into one
-#merged_right = merge([vector_right_target, vector_right_target_pos], mode='concat', concat_axis=-1)
-#merged_left = merge([vector_left_target, vector_left_target_pos], mode='concat', concat_axis=-1)
 
 if stacked:
 
@@ -285,35 +278,34 @@ predictions = Dense(len(vs.label), activation='softmax', name='labels')(dense_ou
 model = Model(input=[left_target_wordpos, right_target_wordpos ,left_target, right_target, left_target_pos, right_target_pos, left_source, right_source, pronoun_input], output=predictions)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-#model.load_weights('/home/mjluot/Projects/wmt16_pronoun/clean_repo/smt-pronouns/models_gru/enfr_stack_False_0_MR_0.125.hdf5')
-#print "Saving model"
-
-
 index2label = {v:k for k,v in vs.label.items()}
 evalcb=CustomCallback(dev_data[0],dev_data[1],index2label, this_model_name + '_stack_' + str(stacked))
 
+#Calculating the weights
+weight_dict = dict(vs.label_counter)
+target = 0.5
+wsum = sum(weight_dict.values())
+nwd = dict()
+for k in weight_dict.keys():   
+    #weight_dict[k] = 1.0/float(weight_dict[k])
+    nwd[vs.label[k]] = 1.0/float(weight_dict[k])
+    #weight_dict[k] = 0.5/(float(weight_dict[k])/float(wsum))
+
+from numpy import linalg
+nnwd = dict()
+for k in nwd.keys():
+    nnwd[k] = nwd[k]/linalg.norm(nwd.values())
+
+print weight_dict, nnwd
+print vs.label_counter
+nnwd[0] = 0.0
+
+
 if dev_data_2 != None:
     evalcb2=CustomCallback(dev_data_2[0],dev_data_2[1],index2label, this_model_name + '_dev_2_stack_' + str(stacked))
-    model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, callbacks=[evalcb,evalcb2])
+    model.fit_generator(fill_batch(train_ms,vs,raw_train_data), samples_per_epoch=training_data_size, nb_epoch=50, class_weight=nnwd, callbacks=[evalcb,evalcb2])
+
 else:
-    #length_of_array = 0
-    weight_dict = dict(vs.label_counter)
-    target = 0.5
-    wsum = sum(weight_dict.values())
-    nwd = dict()
-    for k in weight_dict.keys():   
-        #weight_dict[k] = 1.0/float(weight_dict[k])
-        nwd[vs.label[k]] = 1.0/float(weight_dict[k])
-        #weight_dict[k] = 0.5/(float(weight_dict[k])/float(wsum))
-
-    from numpy import linalg
-    nnwd = dict()
-    for k in nwd.keys():
-        nnwd[k] = nwd[k]/linalg.norm(nwd.values())
-
-    print weight_dict, nnwd
-    print vs.label_counter
-    nnwd[0] = 0.0
 
     model.fit_generator(fill_batch(train_ms,vs,raw_train_data, sentence_context=True), samples_per_epoch=training_data_size, nb_epoch=50, class_weight=nnwd, callbacks=[evalcb])
 
