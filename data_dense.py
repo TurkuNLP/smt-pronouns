@@ -76,7 +76,8 @@ def read_vocabularies(training_fname,force_rebuild):
                     vs.get_id(l,vs.label,vs.label_counter)
 
                     source_tokens=alignments[replace] # all tokens aligned with replace
-                    pron=u" ".join(source[t] for t in source_tokens)
+                    pron=u" ".join(source[t].lower() for t in source_tokens)
+                    print >> sys.stderr, pron
                     vs.get_id(pron,vs.aligned_pronouns)
 
             else:
@@ -95,6 +96,7 @@ def read_vocabularies(training_fname,force_rebuild):
                 vs.get_id(p,vs.target_pos)
             for w in source:
                 vs.get_id(w,vs.source_word,counter=vs.source_word_counter)
+        vs.aligned_pronouns=filter_pronoun_dictionary(vs.aligned_pronouns)
         print >> sys.stderr, "Saving new vocabularies to", voc_fname
         save_vocabularies(vs,voc_fname)
     else:
@@ -123,6 +125,25 @@ def word_pos_split(word_pos):
         return w_p[0],u"RETPOS"
     else:
         return w_p
+
+def filter_pronoun_dictionary(pronouns):
+    allowed=set()
+    for key in pronouns:
+        if len(key.split(" "))==1:
+            allowed.add(key)
+    new_pronouns={u"MASK":0,u"<UNK>":1}
+    for key in pronouns:
+        items=[]
+        tokens=key.split(" ")
+        for token in tokens:
+            if token not in allowed or token in items:
+                continue
+            items.append(token)
+        if not items:
+            continue
+        print >> sys.stderr, "old:", key, "new:", " ".join(items)
+        new_pronouns.setdefault(" ".join(items),len(new_pronouns))
+    return new_pronouns
 
 
 def yield_context(token_id, sent_id, document, lang, window, direction, sentence_context=False):
@@ -212,8 +233,15 @@ def fill_batch(ms,vs,data_iterator, sentence_context=False):
 
             # aligned pronoun
             source_tokens=alignments[replace] # all tokens aligned with replace
-            pron=u" ".join(source[t] for t in source_tokens)
+            aligned=[source[t].lower() for t in source_tokens]
+            filtered=[]
+            for p in aligned:
+                if p not in vs.aligned_pronouns or p in filtered:
+                    continue
+                filtered.append(p)
+            pron=u" ".join(filtered)
             ms.aligned_pronouns[row,0]=vs.get_id(pron,vs.aligned_pronouns)
+            #print >> sys.stderr,"aligned pronoun:",pron,vs.get_id(pron,vs.aligned_pronouns)
 
             # target left
             for j, token in enumerate(yield_context(replace,sent_id,document,3,window,-1, sentence_context=sentence_context)): # token_id, sent_id, document, lang, window, direction             
